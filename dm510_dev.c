@@ -94,6 +94,7 @@ typedef struct dm510_device
 	int writers; //used to keep tracks of current reads
 	int readers; //used to keep tracks of current reads
 	int max_readers; //arbitrary max amount of readers. ioctl should offer to increase size
+
 } dm510_device;
 
 static dm510_device dm510_devices[DEVICE_COUNT];
@@ -187,15 +188,10 @@ int dm510_init_module(void)
 	}
 	else
 	{
-		printk(KERN_INFO "DM510: Sucessfully allocated character devices.\n");
 		initial_device = device_first; //we need to deallocate it later on so we keep track of it.
 	}
 
-
-	//test fra bogen
-	//printk(KERN_INFO "DM510: The process is \"%s\" (pid %i)\n", current->comm, current->pid);
-
-	//printk(KERN_WARNING "DM510: \n%d\n %d\n%d\n", RESIZE_BUFFER, MAX_READERS, PRINT_AUTHORS);
+	printk(KERN_INFO "DM510: This process has been assigned \"%s\" (pid %i)\n", current->comm, current->pid);
 
 
 	//setup the buffers
@@ -268,85 +264,41 @@ static int dm510_release(struct inode* inode, struct file* filp)
 {
 	struct dm510_device* dev = filp->private_data;
 
-
-	//REFACTOR
-	if (dev->device_mode == 1) //read, much faster than filp->f_mode
-	{
-		dev->readers = 0;
-	}
-	else if (dev->device_mode == 2) //write
-	{
-		dev->writers = 0;
-	}
-
-
 	/* device release code belongs here */
 	printk(KERN_INFO "DM510: dm510_release\n");
 	return 0;
 }
 
-static char* dm510_copy_backbuffer(char* in, int max_size, int* read)
+static char* dm510_swap_backbuffer(char* A, char* B)
 {
-	*read = strlen(in);
+	char* temp = A;
+	A = B;
+	return temp;
+}
+
+static char* dm510_copy_backbuffer(char* pipe, int limit)
+{
+	//*read = strlen(in);
 	// +1 because of '\0' at the end
-	char* copy = kmalloc(*read + 1, GFP_KERNEL);
-	strcpy(copy, in);
-	return copy;
+	//char* copy = kmalloc(*read + 1, GFP_KERNEL);
+	//strcpy(copy, in);
+	char* back = kmalloc(sizeof(char) * BUFFER_SIZE, GFP_KERNEL);
+	memcpy(back, pipe + limit, BUFFER_SIZE - limit);
+	return back;
 }
 
-/*
-ssize_t helloworld_driver_read(struct file * filep, char *buff, size_t count, loff_t * offp)
+static void dm510_lock(dm510_device_buffer *buffer) //used for locking a unifying lock function is better to debug.
 {
-	int device_data_length;
-	device_data_length = strlen(helloworld_driver_data);
-
-	// No more data to read.
-	if (*offp >= device_data_length)
-		return 0;
-
-	//We copy either the full data or the number of bytes asked from userspace, depending on whatever is the smallest.
-
-	if ((count + *offp) > device_data_length)
-		count = device_data_length;
-
-	// function to copy kernel space buffer to user space
-	if (copy_to_user(buff, helloworld_driver_data, count) != 0) {
-		printk(KERN_ALERT "Kernel Space to User Space copy failure");
-		return -EFAULT;
-	}
-
-	// Increment the offset to the number of bytes read
-	*offp += count;
-
-	// Return the number of bytes copied to the user space
-	return count;
+	//mutex_lock(&dev->mutex);
+	down(&buffer->semaphore_buffer);
 }
 
-ssize_t helloworld_driver_write(struct file * filep, const char *buff, size_t count, loff_t * offp)
+static void dm510_unlock(dm510_device_buffer *buffer) //used for unlocking a unifying unlock function is better to debug.
 {
-	// Free the previouosly stored data
-	if (helloworld_driver_data)
-		kfree(helloworld_driver_data);
-
-	// Allocate new memory for holding the new data
-	helloworld_driver_data = kmalloc((count * (sizeof(char *))), GFP_KERNEL);
-
-	// function to copy user space buffer to kernel space
-	if (copy_from_user(helloworld_driver_data, buff, count) != 0) {
-		printk(KERN_ALERT "User Space to Kernel Space copy failure");
-		return -EFAULT;
-	}
-
-	// Since our device is an array, we need to do this to terminate the string. Last character will get overwritten by a \0. Incase of an actual file, we will probably update the file size, IIUC.
-
-	helloworld_driver_data[count] = '\0';
-
-	// Return the number of bytes actually written.
-	return count;
+	//mutex_unlock(&dev->mutex);
+	//wake_up_interruptible(&dev->outq);
+	up(&buffer->semaphore_buffer); // Release the lock
 }
-
-*/
-
 
 /* Called when a process, which already opened the dev file, attempts to read from it. */
 static ssize_t dm510_read(struct file* filp,
@@ -356,80 +308,17 @@ static ssize_t dm510_read(struct file* filp,
 {
 	if (access_ok(VERIFY_READ, buf, count))
 	{
-		//printk(KERN_ALERT "VERIFIED READ");
-
-		if (count <= *f_pos)
-		{
-			return 0;
-		}
-
-
-
-		/* read code belongs here */
-		//printk(KERN_INFO "DM510: dm510_read\n");
-
 		struct dm510_device* dev = filp->private_data;
-		//printk(KERN_INFO "reached here 1\n");
 		dm510_device_buffer* buffer = *(dev->rp);
-		//printk(KERN_INFO "reached here 2\n");
-		int max_read = min(count, &buffer->size);
-
-		char* new_buffer = kmalloc(sizeof(char) * BUFFER_SIZE, GFP_KERNEL);
-		//printk(KERN_INFO "reached here 3\n");
-		memcpy(new_buffer, buffer->input_channel + max_read, BUFFER_SIZE - max_read);
-		//printk(KERN_INFO "reached here 4\n");
-		char* old_buffer = buffer->input_channel;
-		//printk(KERN_INFO "reached here 5\n");
-		buffer->input_channel = new_buffer;
-		//printk(KERN_INFO "reached here 6\n");
-		up(&buffer->semaphore_buffer);
-		//printk(KERN_INFO "reached here 7\n");
-		wake_up_interruptible(&dev->inq);
-		//printk(KERN_INFO "reached here 8\n");
-		int copy_res = copy_to_user(buf, old_buffer, count);
-		//printk(KERN_INFO "reached here 9\n");
-		kfree(old_buffer);
-		//printk(KERN_INFO "reached here 10\n");
-		return count - copy_res; //return number of bytes read
+		int limit = min(count, &buffer->size);
+		char* backbuffer = dm510_copy_backbuffer(buffer->input_channel, limit);
+		char* outbuffer = dm510_swap_backbuffer(buffer->input_channel, backbuffer);
+		int bytes = copy_to_user(buf, outbuffer, count);
+		kfree(outbuffer);
+		return count - bytes; //return number of bytes read
 	}
-	else return 13;
-
-	/*
-	//mutex_lock(&dev->mutex);
-
-	int read;
-
-	char* copy = dm510_copy_backbuffer(buffer->input_channel, count, &read);
-
-	if (count <= *f_pos)
-	{
-		return 0;
-	}
-
-	if ((count + *f_pos) > read)
-		count = read;
-
-	//function to copy kernel space buffer to user space
-	if (copy_to_user(buf, copy, count) != 0)
-	{
-		printk(KERN_ALERT "Kernel Space to User Space copy failure");
-		return -EFAULT;
-	}
-
-	// Increment the offset to the number of bytes read
-	*f_pos += count;
-
-	kfree(copy); // at the end, free it again.
-	//mutex_unlock(&dev->mutex);
-
-	// finally, awake any writer
-	wake_up_interruptible(&dev->outq);
-
-	// Return the number of bytes copied to the user space
-	return count;
-	*/
+	else return 0;
 }
-
 
 /* Called when a process writes to dev file */
 static ssize_t dm510_write(struct file* filp,
@@ -439,70 +328,19 @@ static ssize_t dm510_write(struct file* filp,
 {
 	if (access_ok(VERIFY_WRITE, buf, count))
 	{
-		//printk(KERN_ALERT "VERIFIED WRITE");
-
-		if (count <= *f_pos)
-		{
-			return 0;
-		}
-
 		struct dm510_device* dev = filp->private_data;
-
 		dm510_device_buffer* buffer = *(dev->wp);
-
-		down_interruptible(&buffer->semaphore_buffer);
-
-		if (buffer->size == BUFFER_SIZE)
+		if (buffer->size != BUFFER_SIZE)
 		{
-			up(&buffer->semaphore_buffer);
-		}
-		else
-		{
-			int max_write = min(count, BUFFER_SIZE - buffer->size);
-			int copy_res = copy_from_user(buffer->input_channel + buffer->size, buf, max_write);
-
-			// copy_res is the number of chars not copied to user
-			buffer->size += max_write - copy_res;
-
-			up(&buffer->semaphore_buffer); // Release the lock
-			wake_up_interruptible(&dev->outq);
-			return max_write - copy_res; //return number of bytes written
+			dm510_lock(buffer);
+			int limit = min(count, BUFFER_SIZE - buffer->size);
+			int bytes = copy_from_user(buffer->input_channel + buffer->size, buf, limit);
+			buffer->size += limit - bytes;
+			dm510_unlock(buffer);
+			return limit - bytes; //return number of bytes written
 		}
 	}
 	return 1;
-
-	/*
-	struct dm510_device *dev = filp->private_data;
-	int result;
-
-	if (mutex_lock_interruptible(&dev->mutex))
-		return -ERESTARTSYS;
-
-	// ok, space is there, accept something
-	count = min(count, 0);
-
-	if (copy_from_user(dev->wp, buf, count)) {
-		mutex_unlock(&dev->mutex);
-		return -EFAULT;
-	}
-
-	dev->wp += count;
-	if (dev->wp == dev->end)
-		dev->wp = dev->buffer;
-	mutex_unlock(&dev->mutex);
-
-	// finally, awake any reader
-	wake_up_interruptible(&dev->inq);
-
-
-	if (dev->async_queue)
-		kill_fasync(&dev->async_queue, SIGIO, POLL_IN);
-	return count;
-
-
-	printk(KERN_INFO "DM510: dm510_write\n");
-	return 0; //return number of bytes written
-	*/
 }
 
 /* called by system call icotl */
@@ -557,6 +395,10 @@ static void dm510_clean_buffers(void)
 
 static void dm510_clean_devices(void)
 {
+	int i = 0;
+	for (i = 0; i < DEVICE_COUNT; i++)
+		cdev_del(&(dm510_devices[i].cdev));
+	unregister_chrdev_region(initial_device, DEVICE_COUNT);
 }
 
 static void dm510_clean_everything(void)
