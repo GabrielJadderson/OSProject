@@ -52,17 +52,13 @@ static struct file_operations dm510_fops = {
 	.unlocked_ioctl = dm510_ioctl
 };
 
-
 //====================================== BUFFERS ======================================
-//REFACTOR
 typedef struct dm510_device_buffer
 {
 	int size;
 	char* input_channel;
 	struct semaphore semaphore_buffer;
 } dm510_device_buffer;
-
-//REFACOTR
 
 int write_subscribers = 0; //when a thread wants to write it subscribes and this is incremented
 int read_subscribers = 0; //when a thread wants to read it subscribes and this is incremented
@@ -75,34 +71,19 @@ int BUFFER_SIZE = 4096;
 //====================================== DEVICES ======================================
 typedef struct dm510_device
 {
-	//this struct represents a single device instance, here we'll store our variables that are relevant to each device.
 	int device_mode; //mode 1 is reading mode 2 is writing
-
 	int device_id; //the id of the device
 	struct cdev cdev; //the linux character driver
-
-	wait_queue_head_t inq, outq; /* read and write queues */
-
+	wait_queue_head_t inq, outq;
 	dm510_device_buffer **rp, **wp; /* where to read, where to write */
-	int nreaders, nwriters; /* number of openings for r/w */
-	struct fasync_struct* async_queue; /* asynchronous readers */
-	struct mutex mutex; /* mutual exclusion semaphore */
-
-	struct mutex wrlock; //we only use mutexes as UML is single core environment. this is write lock
-	struct mutex rlock; // this is a read locka
-	struct mutex metadata_lock;
-	int writers; //used to keep tracks of current reads
-	int readers; //used to keep tracks of current reads
-	int max_readers; //arbitrary max amount of readers. ioctl should offer to increase size
+	struct mutex mutex;
 
 } dm510_device;
 
 static dm510_device dm510_devices[DEVICE_COUNT];
-//our two devices, was unsure if whether to allocate it with kmalloc or on the stack, since the kernel has limited amount of memory and is shared by a lot of programs. I believe it's still 1 gb of memory, 128 mb for vmalloc and lowmem has rest, but lowmem gives memory in chunks and in powers of two, so you don't get what you exactly want, but a power of two of the amount you want. kmalloc and kzmalloc uses lowmem
 
 static dm510_device_buffer* buffer_0; //buffer 1
 static dm510_device_buffer* buffer_1; // buffer 2
-
 
 dev_t initial_device;
 //====================================== DEVICES ======================================
@@ -141,13 +122,6 @@ static void dm510_init_buffers(void)
 	sema_init(&(buffer_1->semaphore_buffer), 1);
 
 	printk(KERN_INFO "DM510: BUFFERS INITIALIZED\n");
-
-	//wait_queue_head_t from book/the scull driver chapter 5
-
-
-	//init_MUTEX(&buffer2->sem);
-	//init_waitqueue_head(&buffer2->read_wait_queue);
-	//init_waitqueue_head(&buffer2->write_wait_queue);
 }
 
 //REFACOTR
@@ -229,17 +203,14 @@ static int dm510_open(struct inode* inode, struct file* filp)
 
 	mutex_lock(&dev->mutex);
 
-
 	if (filp->f_mode & FMODE_READ)
 	{
 		dev->device_mode = 1; //1 for reading
 		read_subscribers++;
-		dev->nreaders++;
 	}
 	if (filp->f_mode & FMODE_WRITE)
 	{
 		dev->device_mode = 2; //2 for writing
-		dev->nwriters++;
 		write_subscribers++;
 	}
 

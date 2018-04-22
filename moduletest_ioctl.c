@@ -9,6 +9,7 @@
 
 int main(int argc, char *argv[])
 {
+
 	int fd = open("/dev/dm510-0", O_RDWR);
 	printf("dm510_0:\n");
 	printf("set buffer size result: %d\n", ioctl(fd, DM510_SET_BUFFER, 2048)); //set buffer size 2048, default is 1024
