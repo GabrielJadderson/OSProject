@@ -356,7 +356,7 @@ static ssize_t dm510_read(struct file* filp,
 {
 	if (access_ok(VERIFY_READ, buf, count))
 	{
-		printk(KERN_ALERT "VERIFIED READ");
+		//printk(KERN_ALERT "VERIFIED READ");
 
 		if (count <= *f_pos)
 		{
@@ -366,30 +366,30 @@ static ssize_t dm510_read(struct file* filp,
 
 
 		/* read code belongs here */
-		printk(KERN_INFO "DM510: dm510_read\n");
+		//printk(KERN_INFO "DM510: dm510_read\n");
 
 		struct dm510_device* dev = filp->private_data;
-		printk(KERN_INFO "reached here 1\n");
+		//printk(KERN_INFO "reached here 1\n");
 		dm510_device_buffer* buffer = *(dev->rp);
-		printk(KERN_INFO "reached here 2\n");
+		//printk(KERN_INFO "reached here 2\n");
 		int max_read = min(count, &buffer->size);
 
 		char* new_buffer = kmalloc(sizeof(char) * BUFFER_SIZE, GFP_KERNEL);
-		printk(KERN_INFO "reached here 3\n");
+		//printk(KERN_INFO "reached here 3\n");
 		memcpy(new_buffer, buffer->input_channel + max_read, BUFFER_SIZE - max_read);
-		printk(KERN_INFO "reached here 4\n");
+		//printk(KERN_INFO "reached here 4\n");
 		char* old_buffer = buffer->input_channel;
-		printk(KERN_INFO "reached here 5\n");
+		//printk(KERN_INFO "reached here 5\n");
 		buffer->input_channel = new_buffer;
-		printk(KERN_INFO "reached here 6\n");
+		//printk(KERN_INFO "reached here 6\n");
 		up(&buffer->semaphore_buffer);
-		printk(KERN_INFO "reached here 7\n");
+		//printk(KERN_INFO "reached here 7\n");
 		wake_up_interruptible(&dev->inq);
-		printk(KERN_INFO "reached here 8\n");
+		//printk(KERN_INFO "reached here 8\n");
 		int copy_res = copy_to_user(buf, old_buffer, count);
-		printk(KERN_INFO "reached here 9\n");
+		//printk(KERN_INFO "reached here 9\n");
 		kfree(old_buffer);
-		printk(KERN_INFO "reached here 10\n");
+		//printk(KERN_INFO "reached here 10\n");
 		return count - copy_res; //return number of bytes read
 	}
 	else return 13;
@@ -439,7 +439,7 @@ static ssize_t dm510_write(struct file* filp,
 {
 	if (access_ok(VERIFY_WRITE, buf, count))
 	{
-		printk(KERN_ALERT "VERIFIED WRITE");
+		//printk(KERN_ALERT "VERIFIED WRITE");
 
 		if (count <= *f_pos)
 		{
