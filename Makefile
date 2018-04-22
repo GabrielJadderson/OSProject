@@ -15,3 +15,11 @@ modules:
 
 clean:
 	rm -rf *.o *~ core .depend .*.cmd *.ko *.mod.c .tmp_versions
+	rm test1
+	rm test2
+	rm test3
+
+tests:
+	gcc moduletest.c -o test1
+	gcc moduletest_ioctl.c -o test2
+	gcc moduletest_open.c -o test3
