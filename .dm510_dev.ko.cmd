@@ -1,0 +1,1 @@
+cmd_/home/sialk16/dm510/OSProject/dm510_dev.ko := ld -r  -m elf_x86_64 -T ./scripts/module-common.lds --build-id  -o /home/sialk16/dm510/OSProject/dm510_dev.ko /home/sialk16/dm510/OSProject/dm510_dev.o /home/sialk16/dm510/OSProject/dm510_dev.mod.o ;  true
